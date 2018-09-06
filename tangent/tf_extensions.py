@@ -134,7 +134,7 @@ def unreduce_tensor(tensor, shape, axis, keepdims):
       axis = axis,
     for ax in sorted(axis):
       tensor = tf.expand_dims(tensor, ax)
-  tile_shape = np.array(shape) / np.array(shape_as_list(tensor))
+  tile_shape = np.array(shape) // np.array(shape_as_list(tensor))
   return tf.tile(tensor, tile_shape)
 
 
@@ -322,6 +322,14 @@ def dtfmax_pool(y, x, sizes, strides, padding):
       x, y, d[y], sizes, strides, padding)
 
 
+@adjoint(tf.nn.sigmoid)
+def dtfnnsigmoid(y, x):
+    d[y] = tf.multiply(y, tf.subtract(1, y))
+
+@adjoint(tf.square)
+def dtfsquare(y, x):
+    d[y] = tf.multiply(2, x)
+
 #
 # Tangents
 #
@@ -438,6 +446,20 @@ def ttfmax_pool(y, x, sizes, strides, padding):
 def tshape(y, x):
   d[y] = tf.shape(d[x])
 
+@tangent_(tf.matmul)
+def ttfmatmul(z, x, y, transpose_a=False, transpose_b=False):
+    if not transpose_a and not transpose_b:
+        d[z] = tf.add(tf.matmul(d[x], y), tf.matmul(x, d[y]))
+    elif transpose_a and not transpose_b:
+        d[z] = tf.add(tf.matmul(tf.transpose(d[x]), y), tf.matmul(tf.transpose(x), d[y]))
+    elif not transpose_a and transpose_b:
+        d[z] = tf.add(tf.matmul(d[x], tf.transpose(y)), tf.matmul(x, tf.transpose(d[y])))
+    elif transpose_a and transpose_b:
+        d[z] = tf.add(tf.matmul(tf.transpose(d[x]), tf.transpose(y)), tf.matmul(tf.transpose(x), tf.transpose(d[y])))
+
+@tangent_(tf.constant)
+def ttfconstant(y, x, dtype=tf.float32):
+    d[y] = tf.zeros_like(x)
 
 #
 # Blacklist unimplemented Eager grads
